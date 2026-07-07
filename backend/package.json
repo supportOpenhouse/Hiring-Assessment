@@ -1,0 +1,23 @@
+{
+  "name": "openhouse-intern-assessment-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend API + AI scoring for the Openhouse intern assignment portal",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "init-db": "node scripts/init-db.js",
+    "score": "node scripts/run-scorer.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@vercel/blob": "^0.27.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "google-auth-library": "^9.15.0",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^4.77.0",
+    "pg": "^8.13.1"
+  }
+}
