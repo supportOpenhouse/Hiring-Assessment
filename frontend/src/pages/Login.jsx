@@ -13,7 +13,8 @@ export default function Login() {
   return (
     <div className="center">
       <div className="card-auth">
-        <div className="kicker">Openhouse — Internship</div>
+        <img src="/openhouse-logo.png" alt="Openhouse" className="brand-logo" />
+        <div className="kicker">Internship</div>
         <h1>Assignment Portal</h1>
         <p>Sign in with Google to access your assignment. We use this only to keep the process serious and tie your work to you.</p>
         {!clientId && (

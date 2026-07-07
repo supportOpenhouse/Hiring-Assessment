@@ -136,6 +136,9 @@ tbody tr:hover{background:#FBFAF6;}
 .gsi-wrap{display:flex;justify-content:center;margin-top:22px;}
 .consent-row{display:flex;gap:9px;align-items:flex-start;margin-top:20px;font-size:13px;color:var(--ink-soft);line-height:1.5;text-align:left;}
 .consent-row input{width:auto;margin-top:2px;flex-shrink:0;}
+/* Openhouse wordmark (dark, for the light theme). Source is 640×128 (5:1). */
+.brand-logo{height:34px;width:auto;display:block;margin:0 auto 18px;}
+.brand-logo-sm{height:26px;width:auto;display:block;}
 
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap;}
 .who{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-soft);}

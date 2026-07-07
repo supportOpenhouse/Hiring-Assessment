@@ -6,8 +6,11 @@ export default function TopBar({ back }) {
   const navigate = useNavigate();
   return (
     <div className="topbar">
-      <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         {back && <Link to={back} className="btn-ghost" style={{ textDecoration: 'none' }}>← Back</Link>}
+        <Link to="/" aria-label="Openhouse home">
+          <img src="/openhouse-logo.png" alt="Openhouse" className="brand-logo-sm" />
+        </Link>
       </div>
       <div className="who">
         {user?.picture && <img src={user.picture} alt="" referrerPolicy="no-referrer" />}
