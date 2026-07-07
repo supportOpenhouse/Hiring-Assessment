@@ -4,6 +4,17 @@ All notable changes to the Openhouse Intern Assignment & Assessment Portal.
 
 ## [Unreleased]
 
+### Changed — 2026-07-07 — Single-deployment consolidation
+- The whole app now deploys as **one Vercel project** from the repo root: the root
+  `vercel.json` builds the SPA into `frontend/dist` and serves the Express app as a
+  single serverless function via `api/index.js`.
+- Removed the two-project leftovers (`frontend/vercel.json`, `backend/vercel.json`,
+  `backend/api/index.js`) that made Vercel's importer detect multiple services and
+  demand a `services` config.
+- README rewritten for the single-project deploy (one env-var table; `VITE_API_BASE`
+  and `FRONTEND_ORIGIN` are local-dev-only now). Added the missing
+  `backend/.env.example` and `frontend/.env.example` the README referenced.
+
 ### Added — 2026-07-05 — Initial build (not yet deployed)
 - React + Vite frontend and Node/Express backend, structured as two separate Vercel
   projects.

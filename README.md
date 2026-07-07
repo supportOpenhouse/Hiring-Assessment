@@ -7,9 +7,14 @@ the calls and scores each candidate against the assignment rubric. Admins get a
 ranked dashboard.
 
 ```
-frontend/   React + Vite       → Vercel project #1  (candidate + admin UI)
-backend/    Node/Express + AI  → Vercel project #2  (API, Postgres, Blob, scoring)
+frontend/   React + Vite       → static SPA        (candidate + admin UI)
+backend/    Node/Express + AI  → /api function     (API, Postgres, Blob, scoring)
+api/        serverless entry   → wraps backend/src as the single /api function
 ```
+
+Everything deploys as **one Vercel project** from the repo root: the root
+`vercel.json` builds the SPA into `frontend/dist` and serves the Express app as a
+single serverless function at `/api`. One domain, no CORS setup.
 
 ## What it does
 
@@ -31,8 +36,8 @@ backend/    Node/Express + AI  → Vercel project #2  (API, Postgres, Blob, scor
 ## Architecture notes
 
 - Auth: Google ID token → verified server-side → we mint our own 7-day session JWT
-  (Bearer token in `localStorage`). No cross-site cookies needed between the two
-  Vercel domains.
+  (Bearer token in `localStorage`). Frontend and API share one domain, so no
+  cross-site cookies or CORS config in production.
 - Scoring is **asynchronous** (a Vercel Cron hits `/api/cron/score` every 5 min) so
   long transcriptions don't hit serverless request timeouts. Candidates never see
   their own score.
@@ -64,7 +69,8 @@ Trigger scoring locally without waiting for cron: `cd backend && npm run score`.
 
 ## Environment variables
 
-**Backend** (`backend/.env` / Vercel project #2 env):
+All of these go on the **one Vercel project** (locally: `backend/.env`, plus the
+two `VITE_*` vars in `frontend/.env`):
 
 | var | purpose |
 |---|---|
@@ -77,28 +83,24 @@ Trigger scoring locally without waiting for cron: `cd backend && npm run score`.
 | `ANTHROPIC_MODEL` | optional, default `claude-sonnet-5` |
 | `OPENAI_API_KEY` | Whisper — transcription |
 | `CRON_SECRET` | protects the cron endpoint (Vercel sets the header automatically) |
-| `FRONTEND_ORIGIN` | your frontend URL(s) for CORS, comma-separated |
+| `VITE_GOOGLE_CLIENT_ID` | same client ID as `GOOGLE_CLIENT_ID`, for the SPA |
+| `VITE_API_BASE` | **local dev only** (`http://localhost:4000`) — leave unset on Vercel so the SPA calls same-origin `/api` |
+| `FRONTEND_ORIGIN` | **local dev only** — CORS for `localhost:5173`; unneeded in production (same origin) |
 
-**Frontend** (`frontend/.env` / Vercel project #1 env):
-
-| var | purpose |
-|---|---|
-| `VITE_API_BASE` | backend URL, e.g. `https://oh-intern-api.vercel.app` |
-| `VITE_GOOGLE_CLIENT_ID` | same client ID as backend |
-
-## Deploy (two Vercel projects)
+## Deploy (one Vercel project)
 
 1. **Google OAuth** — in Google Cloud Console create an OAuth 2.0 **Web** client.
-   Authorized JavaScript origins: your frontend URL (and `http://localhost:5173`).
-2. **Backend project** → root directory `backend/`. Add all backend env vars. Create
-   a **Postgres** store and a **Blob** store on the project (Vercel injects
+   Authorized JavaScript origins: your deployment URL (and `http://localhost:5173`).
+2. **Import the repo** as a single project → root directory `./`. If Vercel's
+   importer auto-selects the multi-service **"Services"** preset, switch the
+   Application Preset to **"Other"** — the root `vercel.json` drives the whole
+   build (SPA to `frontend/dist`, Express at `/api`, SPA-fallback rewrite, cron).
+3. **Env + stores** — add the env vars above (skip the two local-dev-only ones).
+   Create a **Postgres** store and a **Blob** store on the project (Vercel injects
    `POSTGRES_URL` / `BLOB_READ_WRITE_TOKEN`). After first deploy, run the schema once
    (`npm run init-db` locally against `POSTGRES_URL`, or paste `schema.sql` in the
    Postgres query editor).
-3. **Frontend project** → root directory `frontend/`. Set `VITE_API_BASE` to the
-   backend URL and `VITE_GOOGLE_CLIENT_ID`. Set the backend's `FRONTEND_ORIGIN` to
-   this URL.
-4. **Cron**: `backend/vercel.json` schedules `/api/cron/score` every 5 min.
+4. **Cron**: the root `vercel.json` schedules `/api/cron/score` every 5 min.
    > Note: Vercel **Hobby** plans run cron only once/day. On Hobby, use the admin
    > "Re-run scoring" button (it processes immediately) or run `npm run score`.
 
