@@ -1,13 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const { one } = require('./db');
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-insecure-secret-change-me';
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'ashish@openhouse.in')
-  .split(',')
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
+const { GOOGLE_CLIENT_ID, SESSION_SECRET, ADMIN_EMAILS } = require('./config');
 
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -24,7 +18,9 @@ async function verifyGoogleIdToken(idToken) {
   });
   const p = ticket.getPayload();
   if (!p || !p.email || !p.email_verified) {
-    throw new Error('Google account email not verified');
+    const err = new Error('Google account email not verified');
+    err.status = 401;
+    throw err;
   }
   return { email: p.email.toLowerCase(), name: p.name, picture: p.picture };
 }
@@ -70,12 +66,19 @@ function requireAuth(req, res, next) {
   }
 }
 
+// Admin routes re-check the role from the database rather than trusting the
+// (up to 7-day-old) role claim baked into the JWT — demotions and deletions
+// take effect immediately.
 function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin only' });
+  requireAuth(req, res, async () => {
+    try {
+      const user = await one(`select role from users where id = $1`, [req.user.uid]);
+      if (!user) return res.status(401).json({ error: 'Not authenticated' });
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+      next();
+    } catch (e) {
+      next(e);
     }
-    next();
   });
 }
 

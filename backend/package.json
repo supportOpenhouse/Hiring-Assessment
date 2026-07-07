@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node dev-server.js",
     "init-db": "node scripts/init-db.js",
-    "score": "node scripts/run-scorer.js"
+    "score": "node scripts/run-scorer.js",
+    "test": "node --test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

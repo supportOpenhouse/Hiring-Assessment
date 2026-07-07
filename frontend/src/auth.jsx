@@ -21,6 +21,17 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
+  // When any request hits a 401, the api layer clears the token and fires this
+  // event; drop React auth state too so routing sends the user back to login.
+  useEffect(() => {
+    function onExpired() {
+      setToken(null);
+      setUser(null);
+    }
+    window.addEventListener('oh:auth-expired', onExpired);
+    return () => window.removeEventListener('oh:auth-expired', onExpired);
+  }, []);
+
   async function loginWithGoogleCredential(idToken) {
     const { token, user } = await api.loginWithGoogle(idToken);
     setToken(token);

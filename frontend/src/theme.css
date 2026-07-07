@@ -134,6 +134,8 @@ tbody tr:hover{background:#FBFAF6;}
 .card-auth h1{font-family:'Fraunces',serif;font-weight:600;font-size:30px;margin:8px 0 6px;}
 .card-auth p{color:var(--ink-soft);font-size:14px;line-height:1.5;}
 .gsi-wrap{display:flex;justify-content:center;margin-top:22px;}
+.consent-row{display:flex;gap:9px;align-items:flex-start;margin-top:20px;font-size:13px;color:var(--ink-soft);line-height:1.5;text-align:left;}
+.consent-row input{width:auto;margin-top:2px;flex-shrink:0;}
 
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap;}
 .who{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-soft);}

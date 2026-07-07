@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const { MAX_AUDIO_BYTES } = require('../config');
 
 // Transcription is isolated behind this one function so the provider can be
 // swapped (e.g. to Sarvam AI for stronger Hindi) without touching the scorer.
@@ -13,7 +14,16 @@ async function transcribeFromUrl(blobUrl, filename = 'call.m4a') {
 
   const resp = await fetch(blobUrl);
   if (!resp.ok) throw new Error(`Could not fetch audio (${resp.status})`);
+  // Whisper rejects >25 MB; refuse early with a clear error rather than paying
+  // for the upload and getting an opaque API failure.
+  const declared = Number(resp.headers.get('content-length'));
+  if (declared && declared > MAX_AUDIO_BYTES) {
+    throw new Error(`Audio too large to transcribe (${Math.round(declared / 1e6)} MB, max 25 MB)`);
+  }
   const arrayBuf = await resp.arrayBuffer();
+  if (arrayBuf.byteLength > MAX_AUDIO_BYTES) {
+    throw new Error(`Audio too large to transcribe (${Math.round(arrayBuf.byteLength / 1e6)} MB, max 25 MB)`);
+  }
   const file = await OpenAI.toFile(Buffer.from(arrayBuf), filename);
 
   const result = await client.audio.transcriptions.create({

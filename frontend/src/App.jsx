@@ -6,6 +6,7 @@ import MarketTracker from './pages/MarketTracker.jsx';
 import BDTracker from './pages/BDTracker.jsx';
 import Dashboard from './pages/admin/Dashboard.jsx';
 import CandidateDetail from './pages/admin/CandidateDetail.jsx';
+import Legal from './pages/Legal.jsx';
 
 function Loading() {
   return (
@@ -26,6 +27,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={loading ? <Loading /> : user ? <Navigate to="/" replace /> : <Login />} />
+      {/* Legal pages are public — reachable before sign-in. */}
+      <Route path="/privacy" element={<Legal doc="privacy" />} />
+      <Route path="/terms" element={<Legal doc="terms" />} />
       <Route path="/" element={<Protected><Home /></Protected>} />
       <Route path="/market" element={<Protected><MarketTracker /></Protected>} />
       <Route path="/bd" element={<Protected><BDTracker /></Protected>} />

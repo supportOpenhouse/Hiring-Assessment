@@ -3,6 +3,9 @@ const { getBundle } = require('../data');
 const { transcribeFromUrl } = require('./transcribe');
 const { scoreSubmission } = require('./score');
 
+const MAX_ATTEMPTS = 3;          // give up after this many transient failures
+const STALE_SCORING_MINUTES = 10; // a 'scoring' row older than this is presumed abandoned
+
 // Transcribe any un-transcribed recordings for a submission.
 async function transcribePending(submissionId) {
   const pending = await many(
@@ -23,9 +26,9 @@ async function transcribePending(submissionId) {
   }
 }
 
-// Process one submission end-to-end.
+// Process one submission end-to-end. The row has already been claimed (status
+// set to 'scoring') by the atomic claim in runScorer.
 async function processSubmission(sub) {
-  await query(`update submissions set status = 'scoring', updated_at = now() where id = $1`, [sub.id]);
   try {
     await transcribePending(sub.id);
     const bundle = await getBundle(sub.id, sub.assignment_type);
@@ -49,19 +52,44 @@ async function processSubmission(sub) {
     await query(`update submissions set status = 'scored', updated_at = now() where id = $1`, [sub.id]);
     return { id: sub.id, ok: true, overall: result.overall };
   } catch (e) {
+    // Leave it in 'error'; runScorer will retry until scoring_attempts hits the cap.
     await query(`update submissions set status = 'error', updated_at = now() where id = $1`, [sub.id]);
+    console.error(`[scorer] submission ${sub.id} failed (attempt ${sub.scoring_attempts}):`, e.message);
     return { id: sub.id, ok: false, error: String(e.message) };
   }
 }
 
+// Atomically claim up to `limit` submissions that need scoring:
+//   - freshly 'submitted', OR
+//   - 'scoring' but stale (a previous run died mid-flight), OR
+//   - 'error' with attempts left.
+// FOR UPDATE SKIP LOCKED means two overlapping cron runs never grab the same row.
+async function claimBatch(limit) {
+  const { rows } = await query(
+    `update submissions s
+        set status = 'scoring', scoring_attempts = s.scoring_attempts + 1, updated_at = now()
+      where s.id in (
+        select id from submissions
+         where (
+           status = 'submitted'
+           or (status = 'scoring' and updated_at < now() - ($2 || ' minutes')::interval)
+           or (status = 'error' and scoring_attempts < $3)
+         )
+         order by submitted_at asc nulls last
+         limit $1
+         for update skip locked
+      )
+      returning s.*`,
+    [limit, String(STALE_SCORING_MINUTES), MAX_ATTEMPTS]
+  );
+  return rows;
+}
+
 // Pick up all submissions waiting to be scored. Called by cron and the manual script.
 async function runScorer(limit = 5) {
-  const pending = await many(
-    `select * from submissions where status in ('submitted','scoring') order by submitted_at asc nulls last limit $1`,
-    [limit]
-  );
+  const claimed = await claimBatch(limit);
   const results = [];
-  for (const sub of pending) {
+  for (const sub of claimed) {
     results.push(await processSubmission(sub));
   }
   return results;

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import TopBar from '../components/TopBar.jsx';
 import InstructionsModal from '../components/InstructionsModal.jsx';
+import LegalFooter from '../components/LegalFooter.jsx';
 
 export default function Home() {
   const { user } = useAuth();
@@ -60,6 +61,8 @@ export default function Home() {
       {instructions && (
         <InstructionsModal type={instructions} onClose={() => setInstructions(null)} />
       )}
+
+      <LegalFooter />
     </div>
   );
 }

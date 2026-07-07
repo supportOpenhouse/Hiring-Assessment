@@ -1,30 +1,79 @@
 const { one, many, query } = require('./db');
+const v = require('./validate');
 
 const ASSIGNMENT_TYPES = ['bd', 'market'];
 
-// Whitelist of child tables + their insertable columns, per assignment type.
-// The generic row endpoints only accept tables/columns listed here.
+const NOTES_MAX = 5000;
+
+// Whitelist of child tables + their insertable columns (with coercers), per
+// assignment type. The generic row endpoints only accept tables/columns listed
+// here, and every value is validated before it reaches Postgres.
 const TABLES = {
   market_configs: {
     type: 'market',
-    cols: ['config', 'super_area', 'carpet_area', 'towers', 'units', 'source', 'notes'],
+    cols: {
+      config: (x) => v.text(x, 'config'),
+      super_area: (x) => v.numeric(x, 'super area'),
+      carpet_area: (x) => v.numeric(x, 'carpet area'),
+      towers: (x) => v.text(x, 'towers'),
+      units: (x) => v.numeric(x, 'units'),
+      source: (x) => v.text(x, 'source'),
+      notes: (x) => v.text(x, 'notes', NOTES_MAX),
+    },
   },
   market_plans: {
     type: 'market',
-    cols: ['config', 'source', 'layout', 'link'],
+    cols: {
+      config: (x) => v.text(x, 'config'),
+      source: (x) => v.text(x, 'source'),
+      layout: (x) => v.text(x, 'layout', NOTES_MAX),
+      link: (x) => v.text(x, 'link', 2000),
+    },
   },
   market_prices: {
     type: 'market',
-    cols: ['broker', 'phone', 'config', 'price', 'call_date', 'notes'],
+    cols: {
+      broker: (x) => v.text(x, 'broker'),
+      phone: (x) => v.text(x, 'phone', 30),
+      config: (x) => v.text(x, 'config'),
+      price: (x) => v.numeric(x, 'price'),
+      call_date: (x) => v.date(x, 'call date'),
+      notes: (x) => v.text(x, 'notes', NOTES_MAX),
+    },
   },
   market_negotiations: {
     type: 'market',
-    cols: ['broker', 'phone', 'config', 'floor', 'facing', 'call_type', 'budget', 'offer', 'can_close', 'notes'],
+    cols: {
+      broker: (x) => v.text(x, 'broker'),
+      phone: (x) => v.text(x, 'phone', 30),
+      config: (x) => v.text(x, 'config'),
+      floor: (x) => v.text(x, 'floor', 50),
+      facing: (x) => v.oneOf(['park', 'nonpark'], x, 'facing'),
+      call_type: (x) => v.oneOf(['compromise', 'urgency'], x, 'call type'),
+      budget: (x) => v.numeric(x, 'budget'),
+      offer: (x) => v.numeric(x, 'offer'),
+      can_close: (x) => v.oneOf(['yes', 'no', 'unclear'], x, 'can close'),
+      notes: (x) => v.text(x, 'notes', NOTES_MAX),
+    },
   },
   bd_calls: {
     type: 'bd',
-    cols: ['config', 'size', 'asking_price', 'outcome_price', 'outcome', 'notes'],
+    cols: {
+      config: (x) => v.text(x, 'config'),
+      size: (x) => v.numeric(x, 'size'),
+      asking_price: (x) => v.numeric(x, 'asking price'),
+      outcome_price: (x) => v.numeric(x, 'outcome price'),
+      outcome: (x) => v.text(x, 'outcome'),
+      notes: (x) => v.text(x, 'notes', NOTES_MAX),
+    },
   },
+};
+
+const SUBMISSION_FIELDS = {
+  society: (x) => v.text(x, 'society'),
+  config: (x) => v.text(x, 'config'),
+  market_price: (x) => v.numeric(x, 'market price'),
+  comparables: (x) => v.text(x, 'comparables', NOTES_MAX),
 };
 
 const CHILDREN_BY_TYPE = {
@@ -33,17 +82,19 @@ const CHILDREN_BY_TYPE = {
 };
 
 async function getOrCreateSubmission(userId, type) {
-  let sub = await one(
+  // `on conflict do nothing` + re-select: two concurrent first requests would
+  // otherwise race the unique (user_id, assignment_type) constraint.
+  const inserted = await one(
+    `insert into submissions (user_id, assignment_type) values ($1, $2)
+     on conflict (user_id, assignment_type) do nothing
+     returning *`,
+    [userId, type]
+  );
+  if (inserted) return inserted;
+  return one(
     `select * from submissions where user_id = $1 and assignment_type = $2`,
     [userId, type]
   );
-  if (!sub) {
-    sub = await one(
-      `insert into submissions (user_id, assignment_type) values ($1, $2) returning *`,
-      [userId, type]
-    );
-  }
-  return sub;
 }
 
 // Assemble the full bundle: submission + all child rows + recordings + score.
@@ -66,15 +117,13 @@ async function getBundle(submissionId, type) {
 }
 
 async function updateSubmissionFields(submissionId, fields) {
-  const allowed = ['society', 'config', 'market_price', 'comparables'];
+  const clean = v.cleanBody(SUBMISSION_FIELDS, fields);
   const sets = [];
   const vals = [];
   let i = 1;
-  for (const key of allowed) {
-    if (key in fields) {
-      sets.push(`${key} = $${i++}`);
-      vals.push(fields[key] === '' ? null : fields[key]);
-    }
+  for (const [key, val] of Object.entries(clean)) {
+    sets.push(`${key} = $${i++}`);
+    vals.push(val);
   }
   if (!sets.length) return one(`select * from submissions where id = $1`, [submissionId]);
   sets.push(`updated_at = now()`);
@@ -87,18 +136,16 @@ async function updateSubmissionFields(submissionId, fields) {
 
 async function insertRow(submissionId, table, body) {
   const def = TABLES[table];
-  if (!def) throw new Error('Unknown table');
+  if (!def) throw new v.ValidationError('Unknown table');
+  const clean = v.cleanBody(def.cols, body);
   const cols = ['submission_id'];
   const placeholders = ['$1'];
   const vals = [submissionId];
   let i = 2;
-  for (const c of def.cols) {
-    if (c in body) {
-      cols.push(c);
-      placeholders.push(`$${i++}`);
-      const v = body[c];
-      vals.push(v === '' || v === undefined ? null : v);
-    }
+  for (const [col, val] of Object.entries(clean)) {
+    cols.push(col);
+    placeholders.push(`$${i++}`);
+    vals.push(val);
   }
   return one(
     `insert into ${table} (${cols.join(',')}) values (${placeholders.join(',')}) returning *`,
@@ -107,8 +154,10 @@ async function insertRow(submissionId, table, body) {
 }
 
 async function deleteRow(submissionId, table, id) {
-  if (!TABLES[table]) throw new Error('Unknown table');
-  await query(`delete from ${table} where id = $1 and submission_id = $2`, [id, submissionId]);
+  if (!TABLES[table]) throw new v.ValidationError('Unknown table');
+  await query(`delete from ${table} where id = $1 and submission_id = $2`, [
+    v.id(id, 'row id'), submissionId,
+  ]);
 }
 
 module.exports = {

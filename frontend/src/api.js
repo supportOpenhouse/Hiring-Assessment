@@ -4,6 +4,9 @@ import { upload } from '@vercel/blob/client';
 // relative "/api" paths in production. In dev, fall back to the local backend.
 const BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 'http://localhost:4000' : '');
 const TOKEN_KEY = 'oh_session';
+const REQUEST_TIMEOUT_MS = 30_000;
+// Whisper rejects files over 25 MB, so reject them before uploading.
+export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -18,13 +21,29 @@ async function req(path, { method = 'GET', body } = {}) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Request timed out — check your connection and try again.');
+    throw new Error('Network error — please try again.');
+  } finally {
+    clearTimeout(timer);
+  }
+
   if (res.status === 401) {
     setToken(null);
+    // Let the auth provider clear React state so the app redirects to login
+    // instead of getting stuck on a half-authenticated screen.
+    window.dispatchEvent(new CustomEvent('oh:auth-expired'));
     throw new Error('Session expired — please sign in again.');
   }
   const data = await res.json().catch(() => ({}));
@@ -53,6 +72,9 @@ export const api = {
 
 // Upload an audio file straight to Vercel Blob using a token minted by our backend.
 export async function uploadAudio(file, onProgress) {
+  if (file.size > MAX_AUDIO_BYTES) {
+    throw new Error(`File is too large (${Math.round(file.size / 1e6)} MB). Maximum is 25 MB.`);
+  }
   const token = getToken();
   const safe = file.name.replace(/[^\w.\-]+/g, '_');
   const pathname = `recordings/${Date.now()}_${safe}`;

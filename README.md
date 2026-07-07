@@ -66,6 +66,30 @@ npm run dev                   # http://localhost:5173
 ```
 
 Trigger scoring locally without waiting for cron: `cd backend && npm run score`.
+Run the backend tests: `cd backend && npm test`.
+
+`npm run init-db` is idempotent and safe to re-run — it creates missing tables
+and indexes and applies in-place column migrations without touching existing
+data. To rebuild from scratch in development (drops all data):
+`RESET_OK=1 npm run init-db -- --reset`.
+
+## Security & privacy posture
+
+- **Fail-fast config**: in production the API refuses to boot without
+  `SESSION_SECRET`, `POSTGRES_URL`, and `GOOGLE_CLIENT_ID` (see `src/config.js`),
+  so a misconfigured deploy can't run with a forgeable session secret.
+- **Cron fails closed**: `/api/cron/score` rejects every request in production
+  unless `CRON_SECRET` is set and matches (constant-time compare).
+- **Input validation** (`src/validate.js`): every write is coerced/validated
+  before it reaches Postgres; the DB adds CHECK constraints as a second layer.
+- **Uploads**: only Vercel Blob URLs are accepted for transcription (no SSRF),
+  audio is capped at 25 MB (Whisper's limit) at the client, token, and fetch.
+- **Headers & limits**: `no-store` / `nosniff` / `DENY` / `no-referrer` on all
+  API responses, `x-powered-by` off, per-IP rate limits on auth and upload.
+- **Legal**: `/privacy` and `/terms` are public pages; sign-in requires an
+  explicit consent checkbox. **These documents are reasonable drafts — have
+  counsel review them before relying on them**, especially the call-recording
+  consent representation.
 
 ## Environment variables
 
@@ -96,10 +120,11 @@ two `VITE_*` vars in `frontend/.env`):
    Application Preset to **"Other"** — the root `vercel.json` drives the whole
    build (SPA to `frontend/dist`, Express at `/api`, SPA-fallback rewrite, cron).
 3. **Env + stores** — add the env vars above (skip the two local-dev-only ones).
-   Create a **Postgres** store and a **Blob** store on the project (Vercel injects
-   `POSTGRES_URL` / `BLOB_READ_WRITE_TOKEN`). After first deploy, run the schema once
-   (`npm run init-db` locally against `POSTGRES_URL`, or paste `schema.sql` in the
-   Postgres query editor).
+   `SESSION_SECRET` and `CRON_SECRET` must be set — the API won't boot / the cron
+   won't run without them. Create a **Postgres** store and a **Blob** store on the
+   project (Vercel injects `POSTGRES_URL` / `BLOB_READ_WRITE_TOKEN`). After first
+   deploy, apply the schema (`npm run init-db` locally against `POSTGRES_URL`, or
+   paste `schema.sql` into the Postgres query editor) — re-running it later is safe.
 4. **Cron**: the root `vercel.json` schedules `/api/cron/score` every 5 min.
    > Note: Vercel **Hobby** plans run cron only once/day. On Hobby, use the admin
    > "Re-run scoring" button (it processes immediately) or run `npm run score`.
